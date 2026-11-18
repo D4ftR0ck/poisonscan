@@ -1,0 +1,6 @@
+From: billing@example.org
+Subject: Invoice text
+Content-Type: text/plain
+Content-Transfer-Encoding: base64
+
+SW52b2ljZSAyMDI2LTExOCwgYW1vdW50IDQyMCBFVVIsIGR1ZSBvbiAyMDI2LTEyLTE4IGJ5IGJhbmsgdHJhbnNmZXIu

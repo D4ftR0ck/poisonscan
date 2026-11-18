@@ -41,6 +41,24 @@ DFA fall back to a slow engine on any non-ASCII text (about 16× slower on Frenc
 `rules lint` rejects a `\b` placed right next to a non-ASCII letter (e.g. `\bécris`),
 where it could never match.
 
+## What it catches, and what it does not
+
+Normalisation produces several views of each document: visible text, hidden text (CSS
+hiding including classes, off-screen, tiny or white text, nested elements, comments, alt
+text), Unicode-tag smuggled text, and a de-obfuscated view (base64 / percent / HTML-entity
+decoding up to depth 2, Cyrillic/Greek look-alikes folded to ASCII, leetspeak, spaced-out
+letters). Rules run on every view; a match that only appears in a hidden or decoded view
+weighs 1.5×. Documents over `--max-bytes` are scanned head and tail.
+
+Known limits (see `corpus/known-bypass/`):
+- **False facts without instructions** (PoisonedRAG-style) are out of reach of
+  per-document rules: they need corpus-level analysis (near-duplicates, provenance,
+  retrieval "magnets"), planned as a separate stage.
+- **Free paraphrase** beyond the rule vocabulary needs the optional ML stage (planned).
+- Ciphers the decoder does not undo (ROT13, custom) are caught only through the
+  "decode and follow" wrapper rule.
+- The HTML walker is not a full HTML5 parser and does not evaluate external CSS.
+
 ## Layout
 
 | Crate | Role |

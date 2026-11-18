@@ -1,0 +1,25 @@
+From: billing@example.org
+Subject: Your invoice
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b1"
+
+--b1
+Content-Type: text/plain
+
+Please find your invoice attached. Payment is due within 30 days.
+--b1
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+
+IpHYzcMQQR5+wnN4pmHJNRh8B+TVY26bw8QAsnJEuM06l/Ea5lEHBQamigLw4WGvN/hsuQeHOMNw
+8H6NO1g7rTjCdfNK7QVq1uqO7KQZL6H+udxLHr5V5bj5toDv92yB1OmrME1Ilvnhf9jwgWSW2gh6
+Pr7MZ2qqLF2M4bPGrLxfFnCpghvHKYXXZF59uwd4C0602fudl5RkpSsrgDr7A8UziuvcjDtng1jz
+2JNadehEqIyb9boBYsjb0vTi8L2DzyGEx480bfMOe95dkY0z8IFpfNBbalgAiYqfyZxUdZkHzTqi
+LYyVLtwXzI3M2dHuQQjX8awSFd4EcwPBwUc/RBzMny9YShEqKEGH8yuoRaW2S3SzUn95HQZPYldr
+yzBCG0DmuoL6NfebbtH5BTkEZSUJuPUpcrSBrW2L1Tj6+aHMsYRzOYamB2Wsk81SqKFtD7xMIPc2
+4AxOEtsTT+rwTL4oapBAIQKP4NkJl9E39uaRdSvT3t75x7SfgglgM1gZNJKs5W6XMX4a8KpjS4F/
+BFOc32bmSAQoM9tTz/yQyCJWbTZErBjWYe6MWOrh1q+IfMT8iDwQuQoVIisq6Yk2RMJVmYHXQV5W
+Vx1KPN7xmsf0t+N9IpSNxRpSCmgSYd39ySXUIFcdnZbI7WATkow5kBTzRF3kS5CI7B115UYbyQvT
+SwOdqwMXaR3T4soKMD3J/JZrKR1zKq49KL7YGm/p9mDO+Iro0UuMQLZ6UBk1plEKBgLJ++xLuZhR
+c2RQZhAQ6VH4mfh0HEA3yJ7H+uSK3rB4qVtCLoo1
+--b1--

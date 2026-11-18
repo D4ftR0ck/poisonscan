@@ -1,7 +1,7 @@
 format: 1
 id: PSN-0101
 title: Markdown image or link built to carry data out
-version: 1
+version: 2
 status: experimental
 author: poisonscan project
 date: 2026-11-18
@@ -15,6 +15,7 @@ severity: high
 match:
   regex:
     - '!\[[^\]]*\]\(https?://[^)\s]*[?&][^)\s]*=\s*(\{|\[|<|%7b|\$)'
+    - '!\[[^\]]*\]\(https?://[^)\s]*/(\{|%7b)[^)\s]*\)'
     - '(append|include|add|insert)\s+.{0,40}(conversation|chat history|previous messages|secrets?|api key|password|email addresses).{0,40}\s+(to|in|into)\s+(the\s+)?(url|link|image|query)'
 tests:
   positive:
