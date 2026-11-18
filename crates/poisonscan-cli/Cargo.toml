@@ -1,0 +1,17 @@
+[package]
+name = "poisonscan-cli"
+description = "Command-line interface for poisonscan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "poisonscan"
+path = "src/main.rs"
+
+[dependencies]
+poisonscan-core = { path = "../poisonscan-core" }
+poisonscan-sources = { path = "../poisonscan-sources" }
+serde_json.workspace = true
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }

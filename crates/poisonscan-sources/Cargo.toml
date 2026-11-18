@@ -1,0 +1,11 @@
+[package]
+name = "poisonscan-sources"
+description = "Read-only source adapters producing poisonscan envelopes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+poisonscan-core = { path = "../poisonscan-core" }
+serde_json.workspace = true
+anyhow.workspace = true

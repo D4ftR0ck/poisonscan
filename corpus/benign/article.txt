@@ -1,0 +1,2 @@
+Large language models can be manipulated through indirect prompt injection, where attackers
+hide instructions in web pages. Researchers recommend logging retrieved chunks and sources.
