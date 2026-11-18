@@ -1,0 +1,24 @@
+format: 1
+id: PSN-0007
+title: System-prompt style role definition in collected content
+version: 1
+status: experimental
+author: poisonscan project
+date: 2026-11-18
+description: >
+  "You are a ... assistant" sentences are how system prompts start. On their own they
+  are weak evidence (articles quote them), hence low severity: they add to other findings.
+mitre: [AML.T0051.001]
+severity: low
+match:
+  regex:
+    - '(?m)(^|[.!?"“]\s*)you\s+are\s+(a|an)\s+(?:[a-zà-ÿ'',-]+\s+){0,7}(assistant|chatbot|ai|agent|llm|language\s+model)\b'
+    - '(?m)(^|[.!?"“]\s*)tu\s+es\s+(un|une)\s+(?:[a-zà-ÿ'',-]+\s+){0,7}(assistant|assistante|ia|agent|chatbot)\b'
+tests:
+  positive:
+    - "You are a customer support assistant for Acme Corp."
+    - "You are an internal Linux support assistant helping engineers."
+    - "Tu es un assistant juridique."
+  negative:
+    - "If you are a customer, contact our support assistant desk."
+    - "You are an important member of the team."

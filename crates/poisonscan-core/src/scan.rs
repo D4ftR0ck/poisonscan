@@ -38,6 +38,28 @@ pub struct Finding {
     pub offset: Option<usize>,
 }
 
+/// Context around a match, with control/invisible characters made visible.
+#[derive(Debug, Clone, Serialize)]
+pub struct Excerpt {
+    pub rule_id: String,
+    pub segment: Segment,
+    pub before: String,
+    pub matched: String,
+    pub after: String,
+}
+
+fn neutralise(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '\n' | '\r' | '\t' => ' '.to_string(),
+            c if c.is_control() || ('\u{E0000}'..='\u{E007F}').contains(&c) || ('\u{200B}'..='\u{206F}').contains(&c) => {
+                format!("<U+{:04X}>", c as u32)
+            }
+            c => c.to_string(),
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanReport {
     pub document_id: String,
@@ -96,6 +118,42 @@ impl<'r> Scanner<'r> {
         let mut env = Envelope::text("-", text);
         env.content_type = content_type.into();
         self.scan(&env).expect("utf8 content cannot fail decoding")
+    }
+
+    /// Like `scan`, plus for each rule finding a short neutralised excerpt of the
+    /// text that matched. For analysts only: excerpts must not be sent to a SIEM.
+    pub fn explain(&self, env: &Envelope) -> Result<(ScanReport, Vec<Excerpt>), EnvelopeError> {
+        let report = self.scan(env)?;
+        let content = env.decoded()?;
+        let norm = normalize(&content, &env.content_type);
+        let mut out = Vec::new();
+        for f in &report.findings {
+            let Some(i) = self.rules.rules.iter().position(|r| r.id == f.rule_id) else {
+                continue;
+            };
+            let Some((_, text)) = norm.segments.iter().find(|(s, _)| *s == f.segment) else {
+                continue;
+            };
+            let lower = text.to_lowercase();
+            let span = self.rules.rule_regexes[i]
+                .iter()
+                .find_map(|r| r.find(text).map(|m| (m.start(), m.end())))
+                .or_else(|| {
+                    self.rules.rules[i].matcher.keywords.iter().find_map(|k| {
+                        lower.find(&k.to_lowercase()).map(|s| (s, s + k.len()))
+                    })
+                });
+            if let Some((a, b)) = span {
+                out.push(Excerpt {
+                    rule_id: f.rule_id.clone(),
+                    segment: f.segment,
+                    before: neutralise(&text[floor_char_boundary(text, a.saturating_sub(120))..a]),
+                    matched: neutralise(&text[a..floor_char_boundary(text, b.min(a + 200))]),
+                    after: neutralise(&text[floor_char_boundary(text, b.min(text.len()))..floor_char_boundary(text, (b + 120).min(text.len()))]),
+                });
+            }
+        }
+        Ok((report, out))
     }
 
     pub fn scan(&self, env: &Envelope) -> Result<ScanReport, EnvelopeError> {

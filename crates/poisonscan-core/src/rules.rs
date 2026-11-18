@@ -248,6 +248,8 @@ pub struct RuleSet {
     /// regex pattern index -> rule index
     pub(crate) regex_owner: Vec<usize>,
     pub(crate) exceptions: Vec<Vec<Regex>>,
+    /// Per-rule compiled regexes, used only to locate a match (explain), never in the hot path.
+    pub(crate) rule_regexes: Vec<Vec<Regex>>,
     /// Identifier of the loaded rule content (stable hash), for re-scan decisions.
     pub fingerprint: String,
 }
@@ -284,6 +286,7 @@ impl RuleSet {
         let mut rx = Vec::new();
         let mut regex_owner = Vec::new();
         let mut exceptions = Vec::new();
+        let mut rule_regexes = Vec::new();
         for (i, r) in rules.iter().enumerate() {
             for k in &r.matcher.keywords {
                 kw.push(k.to_lowercase());
@@ -293,6 +296,13 @@ impl RuleSet {
                 rx.push(ascii_boundaries(p));
                 regex_owner.push(i);
             }
+            rule_regexes.push(
+                r.matcher
+                    .regex
+                    .iter()
+                    .map(|p| build_regex(p).map_err(|e| RuleError::Build(e.to_string())))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
             exceptions.push(
                 r.exceptions
                     .regex
@@ -327,6 +337,7 @@ impl RuleSet {
             regexes,
             regex_owner,
             exceptions,
+            rule_regexes,
             fingerprint,
         })
     }

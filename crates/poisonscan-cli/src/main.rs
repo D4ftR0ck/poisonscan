@@ -38,6 +38,14 @@ enum Cmd {
         #[command(flatten)]
         opts: ScanOpts,
     },
+    /// Like scan, but print every finding with a neutralised excerpt of the matched
+    /// text (analyst use: excerpts may contain hostile text, keep them out of SIEMs).
+    Explain {
+        #[arg(default_value = "-")]
+        input: String,
+        #[arg(long, default_value = "rules")]
+        rules: PathBuf,
+    },
     /// Rule pack tooling.
     Rules {
         #[command(subcommand)]
@@ -239,6 +247,44 @@ fn run_scan(src: &mut dyn JobSource, opts: &ScanOpts) -> Result<ExitCode> {
     Ok(if errors > 0 { ExitCode::from(2) } else { ExitCode::SUCCESS })
 }
 
+fn run_explain(input: &str, rules_dir: &Path) -> Result<ExitCode> {
+    let rules = load_ruleset(rules_dir)?;
+    let scanner = Scanner::new(&rules);
+    let reader: Box<dyn io::BufRead> = if input == "-" {
+        Box::new(BufReader::new(io::stdin()))
+    } else {
+        Box::new(BufReader::new(fs::File::open(input).with_context(|| input.to_string())?))
+    };
+    let mut src = JsonLines::new(reader);
+    let mut out = BufWriter::new(io::stdout().lock());
+    while let Some(env) = src.next_envelope() {
+        let env = env?;
+        let (report, excerpts) = scanner.explain(&env)?;
+        if report.findings.is_empty() {
+            continue;
+        }
+        let rule_titles: std::collections::HashMap<&str, &str> =
+            rules.rules().iter().map(|r| (r.id.as_str(), r.title.as_str())).collect();
+        serde_json::to_writer(
+            &mut out,
+            &serde_json::json!({
+                "document_id": report.document_id,
+                "source_uri": report.source_uri,
+                "score": report.score,
+                "verdict": report.verdict,
+                "findings": report.findings.iter().map(|f| serde_json::json!({
+                    "rule_id": f.rule_id, "segment": f.segment,
+                    "title": rule_titles.get(f.rule_id.as_str()).copied().unwrap_or(f.title.as_str())
+                })).collect::<Vec<_>>(),
+                "excerpts": excerpts,
+            }),
+        )?;
+        out.write_all(b"\n")?;
+    }
+    out.flush()?;
+    Ok(ExitCode::SUCCESS)
+}
+
 fn rules_lint(dir: &Path) -> Result<ExitCode> {
     let files = rule_files(dir)?;
     let mut bad = 0;
@@ -322,6 +368,7 @@ fn main() -> ExitCode {
         }
         Cmd::ScanDir { path, trust, opts } => parse_trust(&trust)
             .and_then(|t| run_scan(&mut Directory::new(&path, t, opts.max_bytes as u64), &opts)),
+        Cmd::Explain { input, rules } => run_explain(&input, &rules),
         Cmd::Rules { cmd: RulesCmd::Lint { dir } } => rules_lint(&dir),
         Cmd::Rules { cmd: RulesCmd::Test { dir, corpus } } => rules_test(&dir, corpus.as_deref()),
     };

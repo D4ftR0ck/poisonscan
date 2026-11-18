@@ -12,7 +12,7 @@ pub mod scan;
 
 pub use envelope::{Envelope, Source, Trust};
 pub use rules::{Rule, RuleSet, Severity};
-pub use scan::{Finding, Limits, ScanReport, Scanner, Verdict};
+pub use scan::{Excerpt, Finding, Limits, ScanReport, Scanner, Verdict};
 
 /// Version of the output event schema.
 pub const OUTPUT_SCHEMA: &str = "poisonscan.finding/v1";
