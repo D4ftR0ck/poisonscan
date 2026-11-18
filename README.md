@@ -30,6 +30,17 @@ Input envelope (one per line):
 Outputs: `native`, `ocsf` (Detection Finding, class 2004), `ecs`. Alerts never contain raw
 excerpts of the scanned content.
 
+## Performance
+
+Parsing and scanning run in parallel batches (`--threads`, default 2, `0` = all cores;
+`--batch`, default 256 documents). Output order always follows input order. Memory is
+bounded by `batch × max-bytes`.
+
+Rule authors: `\b` is compiled as an ASCII word boundary. A Unicode `\b` makes the regex
+DFA fall back to a slow engine on any non-ASCII text (about 16× slower on French text).
+`rules lint` rejects a `\b` placed right next to a non-ASCII letter (e.g. `\bécris`),
+where it could never match.
+
 ## Layout
 
 | Crate | Role |

@@ -12,6 +12,7 @@ use poisonscan_core::output::{render, Format};
 use poisonscan_core::{Rule, RuleSet, Scanner, Trust, Verdict};
 use poisonscan_sources::{Directory, EnvelopeSource, JsonLines};
 
+
 #[derive(Parser)]
 #[command(name = "poisonscan", version, about = "Detect collection-to-LLM poisoning (indirect prompt injection, RAG corpus poisoning)")]
 struct Cli {
@@ -58,6 +59,12 @@ struct ScanOpts {
     /// Max bytes scanned per document.
     #[arg(long, default_value_t = 2 * 1024 * 1024)]
     max_bytes: usize,
+    /// Worker threads (default 2, to stay light on shared hosts; 0 = all cores).
+    #[arg(long, default_value_t = 2)]
+    threads: usize,
+    /// Documents per batch. Memory is bounded by batch x max-bytes.
+    #[arg(long, default_value_t = 256)]
+    batch: usize,
 }
 
 #[derive(Subcommand)]
@@ -124,7 +131,50 @@ fn verdict_rank(v: Verdict) -> u8 {
     }
 }
 
-fn run_scan(src: &mut dyn EnvelopeSource, opts: &ScanOpts) -> Result<ExitCode> {
+/// One unit of work: either a raw JSON line (parsed in the worker) or an
+/// already-built envelope (directory adapter).
+enum Job {
+    Line(usize, String),
+    Env(Result<poisonscan_core::Envelope>),
+}
+
+/// Pulls up to `n` jobs from the input. Reading stays sequential (I/O);
+/// parsing and scanning run in parallel.
+trait JobSource {
+    fn next_batch(&mut self, n: usize, batch: &mut Vec<Job>);
+}
+
+impl<R: io::BufRead> JobSource for JsonLines<R> {
+    fn next_batch(&mut self, n: usize, batch: &mut Vec<Job>) {
+        while batch.len() < n {
+            match self.next_raw() {
+                None => break,
+                Some(Ok((no, line))) => batch.push(Job::Line(no, line)),
+                Some(Err(e)) => batch.push(Job::Env(Err(e))),
+            }
+        }
+    }
+}
+
+impl JobSource for Directory {
+    fn next_batch(&mut self, n: usize, batch: &mut Vec<Job>) {
+        while batch.len() < n {
+            match self.next_envelope() {
+                None => break,
+                Some(r) => batch.push(Job::Env(r)),
+            }
+        }
+    }
+}
+
+enum Outcome {
+    Report(Box<poisonscan_core::ScanReport>),
+    Error(String),
+}
+
+fn run_scan(src: &mut dyn JobSource, opts: &ScanOpts) -> Result<ExitCode> {
+    use rayon::prelude::*;
+
     let rules = load_ruleset(&opts.rules)?;
     let scanner = Scanner::new(&rules).with_limits(poisonscan_core::Limits { max_bytes: opts.max_bytes });
     let min = match opts.min_verdict.as_str() {
@@ -133,32 +183,55 @@ fn run_scan(src: &mut dyn EnvelopeSource, opts: &ScanOpts) -> Result<ExitCode> {
         "quarantine" => 2,
         _ => bail!("min-verdict must be allow|flag|quarantine"),
     };
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(opts.threads)
+        .build()
+        .context("thread pool")?;
     let stdout = io::stdout();
     let mut out = BufWriter::new(stdout.lock());
     let (mut total, mut emitted, mut errors) = (0u64, 0u64, 0u64);
-    while let Some(item) = src.next_envelope() {
-        let env = match item {
-            Ok(e) => e,
-            Err(e) => {
-                errors += 1;
-                eprintln!("poisonscan: skipped: {e:#}");
-                continue;
+    let mut batch = Vec::with_capacity(opts.batch);
+    loop {
+        batch.clear();
+        src.next_batch(opts.batch, &mut batch);
+        if batch.is_empty() {
+            break;
+        }
+        // par_drain keeps input order in the collected Vec: output is deterministic.
+        let results: Vec<Outcome> = pool.install(|| {
+            batch
+                .par_drain(..)
+                .map(|job| {
+                    let env = match job {
+                        Job::Line(no, line) => poisonscan_sources::parse_line(no, &line),
+                        Job::Env(r) => r,
+                    };
+                    match env {
+                        Err(e) => Outcome::Error(format!("skipped: {e:#}")),
+                        Ok(env) => match scanner.scan(&env) {
+                            Ok(r) => Outcome::Report(Box::new(r)),
+                            Err(e) => Outcome::Error(format!("{}: {e}", env.id)),
+                        },
+                    }
+                })
+                .collect()
+        });
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+        for o in results {
+            match o {
+                Outcome::Error(msg) => {
+                    errors += 1;
+                    eprintln!("poisonscan: {msg}");
+                }
+                Outcome::Report(report) => {
+                    total += 1;
+                    if verdict_rank(report.verdict) >= min {
+                        emitted += 1;
+                        serde_json::to_writer(&mut out, &render(&report, opts.format, now))?;
+                        out.write_all(b"\n")?;
+                    }
+                }
             }
-        };
-        total += 1;
-        let report = match scanner.scan(&env) {
-            Ok(r) => r,
-            Err(e) => {
-                errors += 1;
-                eprintln!("poisonscan: {}: {e}", env.id);
-                continue;
-            }
-        };
-        if verdict_rank(report.verdict) >= min {
-            emitted += 1;
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
-            serde_json::to_writer(&mut out, &render(&report, opts.format, now))?;
-            out.write_all(b"\n")?;
         }
     }
     out.flush()?;

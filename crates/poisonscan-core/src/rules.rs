@@ -163,6 +163,9 @@ impl Rule {
             if let Err(e) = build_regex(r) {
                 errs.push(format!("regex {r:?}: {e}"));
             }
+            if boundary_next_to_non_ascii(r) {
+                errs.push(format!("regex {r:?}: \\b next to a non-ASCII letter never matches (boundaries are ASCII); use (^|\\W) or drop it"));
+            }
         }
         if self.status != Status::Deprecated && self.tests.positive.is_empty() {
             errs.push("at least one positive test example is required".into());
@@ -174,8 +177,62 @@ impl Rule {
     }
 }
 
+/// Rewrite `\b` / `\B` into ASCII word boundaries.
+///
+/// A Unicode `\b` makes the regex crate's fast DFA give up on any non-ASCII
+/// haystack and fall back to a much slower engine (measured ~16x slower on
+/// French text). Rules therefore get ASCII boundaries; `rules lint` rejects
+/// a boundary placed right next to a non-ASCII letter, where it would never match.
+pub(crate) fn ascii_boundaries(p: &str) -> String {
+    let mut out = String::with_capacity(p.len() + 16);
+    let mut chars = p.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some(b @ ('b' | 'B')) if chars.peek() != Some(&'{') => {
+                out.push_str("(?-u:\\");
+                out.push(b);
+                out.push(')');
+            }
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+/// `\b` immediately before or after a non-ASCII character can never match once
+/// boundaries are ASCII-only (e.g. `\bécris`).
+fn boundary_next_to_non_ascii(p: &str) -> bool {
+    let chars: Vec<char> = p.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() {
+            if chars[i + 1] == 'b' {
+                let before = i.checked_sub(1).map(|j| chars[j]);
+                let after = chars.get(i + 2).copied();
+                if before.is_some_and(|c| !c.is_ascii() && c.is_alphabetic())
+                    || after.is_some_and(|c| !c.is_ascii() && c.is_alphabetic())
+                {
+                    return true;
+                }
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
 fn build_regex(p: &str) -> Result<Regex, regex::Error> {
-    RegexBuilder::new(p)
+    RegexBuilder::new(&ascii_boundaries(p))
         .case_insensitive(true)
         .size_limit(REGEX_SIZE_LIMIT)
         .build()
@@ -233,7 +290,7 @@ impl RuleSet {
                 keyword_owner.push(i);
             }
             for p in &r.matcher.regex {
-                rx.push(p.clone());
+                rx.push(ascii_boundaries(p));
                 regex_owner.push(i);
             }
             exceptions.push(
@@ -284,5 +341,33 @@ impl RuleSet {
 
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boundaries_are_rewritten_but_escapes_kept() {
+        assert_eq!(ascii_boundaries(r"\bfoo\B"), r"(?-u:\b)foo(?-u:\B)");
+        assert_eq!(ascii_boundaries(r"a\\b"), r"a\\b");
+        assert_eq!(ascii_boundaries(r"\b{start}x"), r"\b{start}x");
+        assert_eq!(ascii_boundaries(r"\d\s\."), r"\d\s\.");
+    }
+
+    #[test]
+    fn ascii_boundary_still_matches_accented_text_around_words() {
+        let r = build_regex(r"\btu\s+dois\b").unwrap();
+        assert!(r.is_match("si tu dois répondre, évite"));
+        assert!(!r.is_match("statu doisé"));
+    }
+
+    #[test]
+    fn lint_rejects_boundary_next_to_accent() {
+        assert!(boundary_next_to_non_ascii(r"\bécris"));
+        assert!(!boundary_next_to_non_ascii(r"réponds\b"));
+        assert!(boundary_next_to_non_ascii(r"précédé\b"));
+        assert!(!boundary_next_to_non_ascii(r"\bignore\b"));
     }
 }

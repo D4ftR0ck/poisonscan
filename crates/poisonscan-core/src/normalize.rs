@@ -46,6 +46,10 @@ fn is_tag(c: char) -> bool {
 
 /// Strip invisible / tag characters, decode tag-smuggled ASCII, apply NFKC.
 fn clean_unicode(input: &str, out: &mut Normalized) -> String {
+    // Fast path: pure ASCII has no invisible/tag characters and is already NFKC.
+    if input.is_ascii() {
+        return input.to_owned();
+    }
     let mut invisible = 0usize;
     let mut smuggled = String::new();
     let mut cleaned = String::with_capacity(input.len());
@@ -73,6 +77,10 @@ fn clean_unicode(input: &str, out: &mut Normalized) -> String {
             detail: format!("{} characters smuggled via Unicode tags", smuggled.len()),
         });
         out.segments.push((Segment::Smuggled, smuggled));
+    }
+    // Most collected text is already NFKC: the quick check avoids re-allocating it.
+    if unicode_normalization::is_nfkc_quick(cleaned.chars()) == unicode_normalization::IsNormalized::Yes {
+        return cleaned;
     }
     cleaned.nfkc().collect()
 }

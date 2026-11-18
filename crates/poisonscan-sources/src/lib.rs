@@ -27,24 +27,32 @@ impl<R: BufRead> JsonLines<R> {
     }
 }
 
-impl<R: BufRead> EnvelopeSource for JsonLines<R> {
-    fn next_envelope(&mut self) -> Option<Result<Envelope>> {
+impl<R: BufRead> JsonLines<R> {
+    /// Next non-empty raw line with its line number, without parsing it.
+    /// Lets callers parse in parallel.
+    pub fn next_raw(&mut self) -> Option<Result<(usize, String)>> {
         loop {
             self.buf.clear();
             self.line_no += 1;
             match self.reader.read_line(&mut self.buf) {
                 Ok(0) => return None,
                 Ok(_) if self.buf.trim().is_empty() => continue,
-                Ok(_) => {
-                    let n = self.line_no;
-                    return Some(
-                        serde_json::from_str(self.buf.trim_end())
-                            .with_context(|| format!("line {n}: invalid envelope")),
-                    );
-                }
+                Ok(_) => return Some(Ok((self.line_no, std::mem::take(&mut self.buf)))),
                 Err(e) => return Some(Err(e.into())),
             }
         }
+    }
+}
+
+/// Parse one JSON Lines record into an envelope.
+pub fn parse_line(line_no: usize, line: &str) -> Result<Envelope> {
+    serde_json::from_str(line.trim_end()).with_context(|| format!("line {line_no}: invalid envelope"))
+}
+
+impl<R: BufRead> EnvelopeSource for JsonLines<R> {
+    fn next_envelope(&mut self) -> Option<Result<Envelope>> {
+        self.next_raw()
+            .map(|r| r.and_then(|(n, line)| parse_line(n, &line)))
     }
 }
 
