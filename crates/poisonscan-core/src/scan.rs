@@ -182,7 +182,11 @@ impl<'r> Scanner<'r> {
                     title: format!("{title} ({})", sig.detail),
                     severity: *sev,
                     segment: Segment::Hidden,
-                    mitre: vec!["AML.T0051.001".into()],
+                    mitre: if matches!(*id, "PSN-B001" | "PSN-B002" | "PSN-B005") {
+                        vec!["AML.T0051.001".into(), "AML.T0068".into()]
+                    } else {
+                        vec!["AML.T0051.001".into()]
+                    },
                     offset: None,
                 });
             }
