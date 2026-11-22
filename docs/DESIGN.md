@@ -2,7 +2,18 @@
 
 *[Version française](DESIGN.fr.md)*
 
-Open-source, public project. This document is a design note: nothing is implemented yet.
+Open-source, public project. This document is the design note: it describes the target architecture. The **Status** section below says what is implemented in v0.1 and what is still planned.
+
+## Status (v0.1)
+**Implemented:**
+- `poisonscan-core` (no I/O, `#![forbid(unsafe_code)]`): Unicode normalisation (NFKC, invisible and tag characters, confusables), HTML visible/hidden split, de-obfuscation (base64, percent-encoding, HTML entities), a two-stage funnel (Aho-Corasick keywords, then a single `RegexSet` pass), scoring weighted by segment and source trust, verdicts `allow` / `flag` / `quarantine`.
+- Rule pack: 19 YAML rules (`ai-directed/`, `exfil/`, `hidden-text/`) and 5 built-in signals, mapped to MITRE ATLAS techniques, each with positive and negative examples and a sample in `corpus/poisoned/by-rule/`.
+- `poisonscan-sources`: JSON Lines envelopes and directories of raw files.
+- `poisonscan-cli`: `scan`, `scan-dir`, `explain` (neutralised excerpts, for analysts), `rules lint`, `rules test --corpus`, and `tag-sqlite` (incremental tags stored next to a SQLite table; see the README).
+- Outputs: `native`, `ocsf` (Detection Finding), `ecs`. Alerts never carry raw excerpts.
+- Parallel batch scanning (`rayon`), bounded memory, xxh3 content hash and rule-pack fingerprint on every verdict.
+
+**Planned:** MIME and PDF decoders, Maildir/mbox and PostgreSQL adapters, PyO3 binding, `integrations/` (Splunk, Elastic, Sentinel), CEF/syslog outputs, CI, signed rule packs, ML classifier stage, "magnet" passage detection, public benchmark.
 
 ## Problem
 More and more systems automatically collect external content (emails, web pages, RSS feeds, PDFs, tickets, scraping…), store it, then pass it to an LLM: in a RAG, an assistant, an agent or an enrichment step. An attacker can slip instructions or fabricated claims into this content. This is called **indirect prompt injection** and **RAG corpus poisoning**.
@@ -27,7 +38,6 @@ poisonscan monitors the **collection → LLM** channel: content ingested automat
 - **Slack AI** (2024, reported by PromptArmor): a message in a public channel makes the assistant leak the content of private channels.
 - **MITRE ATLAS AML.T0070 (RAG Poisoning)**: the reference technique, with traceability recommendations (query, retrieved passages, scores, source, trust level).
 - **Greshake et al. 2023**, "Not what you've signed up for": the foundation of indirect injection.
-- (Dates and CVE numbers to be checked before publication.)
 
 ## Existing open-source work
 - **Rust crates** (recent, little tested): `atlas-detect` (97 MITRE ATLAS rules in a `RegexSet`), `jailguard` (small embedded MLP classifier), `llm-security`, `prompt-inj-rs`, `llm-kernel`.
@@ -116,16 +126,15 @@ Scanned content is hostile by definition.
 - Public test corpus, with no personal data at all.
 
 ## Work order
-1. Specify the rule format (schema) and build a first poisoned and benign corpus, inspired by EchoLeak, PoisonedRAG and Slack AI.
-2. `poisonscan-core` + `rules lint/test` + CI.
-3. `poisonscan-sources` (files, JSONL, SQLite, Maildir) + `scan-store` + `explain`. Done for SQLite: `tag-sqlite` (tags in `poisonscan_tags`, incremental scanning, orphan clean-up, content-hash key when needed).
+1. ✅ Specify the rule format (schema) and build a first poisoned and benign corpus, inspired by EchoLeak, PoisonedRAG and Slack AI.
+2. ✅ `poisonscan-core` + `rules lint/test`. CI still to be set up.
+3. `poisonscan-sources` (files, JSONL, SQLite, Maildir) + store scanning + `explain`. Done: JSONL, directories, `explain`, and for SQLite `tag-sqlite` (tags in `poisonscan_tags`, incremental scanning, orphan clean-up, content-hash key when needed). Remaining: Maildir/mbox.
 4. PyO3 binding and an example of integration into a RAG ingestion pipeline.
 5. Public benchmark, then a first published release.
 
 ## Open questions
-- Alert only, or also quarantine by default?
+- ~~Alert only, or also quarantine by default?~~ Decided: verdicts are informational. poisonscan never removes or edits a document; whether to quarantine is up to the calling pipeline.
 - Detecting "magnet" passages: reuse the embeddings of an existing index, or compute them?
-- Final project name ("poisonscan" is provisional; check that it is available).
 
 ## Verification
 - The poisoned corpus is fully detected; the false-positive rate on the benign corpus stays under the set threshold.

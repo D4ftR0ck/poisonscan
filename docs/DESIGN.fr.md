@@ -2,7 +2,18 @@
 
 *[English version](DESIGN.md)*
 
-Projet open source et public. Ce document est une note de conception : rien n'est encore implémenté.
+Projet open source et public. Ce document est la note de conception : il décrit l'architecture visée. La section **État** ci-dessous indique ce qui est implémenté dans la v0.1 et ce qui reste prévu.
+
+## État (v0.1)
+**Implémenté :**
+- `poisonscan-core` (sans E/S, `#![forbid(unsafe_code)]`) : normalisation Unicode (NFKC, caractères invisibles et tags, caractères confusables), séparation du texte visible et caché en HTML, dé-obfuscation (base64, encodage pourcent, entités HTML), entonnoir en deux étages (mots-clés Aho-Corasick, puis une passe `RegexSet`), score pondéré par segment et par confiance de la source, verdicts `allow` / `flag` / `quarantine`.
+- Pack de règles : 19 règles YAML (`ai-directed/`, `exfil/`, `hidden-text/`) et 5 signaux intégrés, associés aux techniques MITRE ATLAS, chacun avec des exemples positifs et négatifs et un échantillon dans `corpus/poisoned/by-rule/`.
+- `poisonscan-sources` : enveloppes JSON Lines et dossiers de fichiers bruts.
+- `poisonscan-cli` : `scan`, `scan-dir`, `explain` (extraits neutralisés, pour les analystes), `rules lint`, `rules test --corpus` et `tag-sqlite` (marqueurs incrémentaux stockés à côté d'une table SQLite ; voir le README).
+- Sorties : `native`, `ocsf` (Detection Finding), `ecs`. Les alertes ne contiennent jamais d'extrait brut.
+- Analyse parallèle par lots (`rayon`), mémoire bornée, empreinte xxh3 du contenu et empreinte du pack de règles dans chaque verdict.
+
+**Prévu :** décodeurs MIME et PDF, adaptateurs Maildir/mbox et PostgreSQL, liaison PyO3, dossier `integrations/` (Splunk, Elastic, Sentinel), sorties CEF/syslog, CI, packs de règles signés, étage de classifieur ML, détection des passages « aimants », banc d'essai public.
 
 ## Problème
 De plus en plus de systèmes collectent automatiquement des contenus externes (mails, pages web, flux RSS, PDF, tickets, scraping…), les stockent, puis les passent à un LLM : dans un RAG, un assistant, un agent ou une étape d'enrichissement. Un attaquant peut glisser dans ces contenus des instructions ou des affirmations fabriquées. On parle d'**injection de prompt indirecte** et d'**empoisonnement de corpus RAG**.
@@ -27,7 +38,6 @@ poisonscan surveille le canal **collecte → LLM** : le contenu ingéré automat
 - **Slack AI** (2024, signalé par PromptArmor) : un message dans un canal public fait fuiter, par l'assistant, le contenu de canaux privés.
 - **MITRE ATLAS AML.T0070 (RAG Poisoning)** : la technique de référence, avec des recommandations de traçabilité (requête, passages retrouvés, scores, source, niveau de confiance).
 - **Greshake et al. 2023**, « Not what you've signed up for » : fondement de l'injection indirecte.
-- (Dates et numéros de CVE à vérifier avant publication.)
 
 ## L'existant open source
 - **Crates Rust** (récentes, peu éprouvées) : `atlas-detect` (97 règles MITRE ATLAS dans un `RegexSet`), `jailguard` (petit classifieur MLP embarqué), `llm-security`, `prompt-inj-rs`, `llm-kernel`.
@@ -116,16 +126,15 @@ Le contenu analysé est hostile par définition.
 - Corpus de test public, sans aucune donnée personnelle.
 
 ## Ordre de travail
-1. Spécifier le format des règles (schéma) et constituer un premier corpus piégé et sain, inspiré d'EchoLeak, de PoisonedRAG et de Slack AI.
-2. `poisonscan-core` + `rules lint/test` + CI.
-3. `poisonscan-sources` (fichiers, JSONL, SQLite, Maildir) + `scan-store` + `explain`. Fait pour SQLite : `tag-sqlite` (marqueurs dans `poisonscan_tags`, analyse incrémentale, nettoyage des orphelins, clé par empreinte du contenu au besoin).
+1. ✅ Spécifier le format des règles (schéma) et constituer un premier corpus piégé et sain, inspiré d'EchoLeak, de PoisonedRAG et de Slack AI.
+2. ✅ `poisonscan-core` + `rules lint/test`. La CI reste à mettre en place.
+3. `poisonscan-sources` (fichiers, JSONL, SQLite, Maildir) + analyse d'un stock + `explain`. Fait : JSONL, dossiers, `explain` et, pour SQLite, `tag-sqlite` (marqueurs dans `poisonscan_tags`, analyse incrémentale, nettoyage des orphelins, clé par empreinte du contenu au besoin). Reste : Maildir/mbox.
 4. Liaison PyO3 et exemple d'intégration dans un pipeline d'ingestion RAG.
 5. Banc d'essai public, puis première version publiée.
 
 ## Points ouverts
-- Alerter seulement, ou aussi mettre en quarantaine par défaut ?
+- ~~Alerter seulement, ou aussi mettre en quarantaine par défaut ?~~ Tranché : les verdicts sont informatifs. poisonscan ne retire ni ne modifie jamais un document ; la mise en quarantaine éventuelle relève du pipeline appelant.
 - Détection des passages « aimants » : réutiliser les embeddings d'un index existant, ou en calculer ?
-- Nom définitif du projet (« poisonscan » est provisoire, vérifier qu'il est libre).
 
 ## Vérification
 - Le corpus piégé est entièrement détecté ; le taux de faux positifs sur le corpus sain reste sous le seuil fixé.
