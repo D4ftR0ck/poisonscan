@@ -5,7 +5,7 @@ hidden in content that pipelines collect automatically (mail, web pages, feeds, 
 an LLM reads it. Most existing guardrails watch the *user → LLM* prompt; poisonscan watches
 the *collection → LLM* channel.
 
-Status: early prototype (v0.1). Design notes: [docs/DESIGN.md](docs/DESIGN.md).
+Status: early prototype (v0.1). Design notes: [docs/DESIGN.md](docs/DESIGN.md) (French: [docs/DESIGN.fr.md](docs/DESIGN.fr.md)).
 
 ## Quick start
 
