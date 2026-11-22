@@ -87,4 +87,5 @@ Built-in structural detectors use reserved ids `PSN-Bxxx`.
 
 ## License
 
-MIT OR Apache-2.0 (license files to be added).
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Security reports: see [SECURITY.md](SECURITY.md).
