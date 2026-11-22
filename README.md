@@ -18,7 +18,22 @@ cargo build --release
 ./target/release/poisonscan scan docs.jsonl --format ocsf
 # scan a directory of raw files
 ./target/release/poisonscan scan-dir ./collected --trust low --format ecs
+# tag the rows of a SQLite table (incremental; the table itself is only read)
+./target/release/poisonscan tag-sqlite --config examples/tag-sqlite.toml
 ```
+
+`tag-sqlite` writes two tables next to the scanned one:
+
+- `poisonscan_tags(key, score, verdict, rules, mitre, rules_fingerprint, content_xxh3, scanned_at)`:
+  one row per flagged document. Applications join on it to show a marker; nothing is
+  excluded and the document text is never modified.
+- `poisonscan_seen(key, content_xxh3, rules_fingerprint)`: every scanned row, so the next
+  run only scans new or changed rows, or everything again when the rule pack changes.
+
+Tags of rows deleted from the table are removed at the end of each run (`--no-prune` to
+keep them). Use `key = "content"` when the table is rebuilt with new row numbers: the tag
+key is then the SHA-256 (hex) of the scanned content, which any client can recompute.
+Other options: `--dry-run`, `--full`, `--limit`, `--threads`, `--reset`.
 
 Input envelope (one per line):
 

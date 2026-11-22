@@ -1,0 +1,15 @@
+# Example configuration for `poisonscan tag-sqlite --config examples/tag-sqlite.toml`.
+# Expressions (id, content, source_uri, where) are SQL evaluated by SQLite. They are
+# written by the administrator; never build them from collected data.
+
+db = "/var/lib/myrag/documents.db"   # tags are written in this same database
+table = "documents"                   # plain identifier only
+id = "id"                             # default: rowid
+content = "coalesce(title, '') || char(10) || coalesce(body, '')"
+content_type = "text/html"            # text/plain (default), text/html, message/rfc822
+source_type = "web"                   # email | web | rss | pdf | ticket | api | file | other
+source_uri = "url"                    # optional
+trust = "low"                         # low | medium (default) | high
+# where = "lang = 'en'"               # optional filter
+# key = "content"                     # "id" (default) or "content": SHA-256 of the
+#                                     # content, for tables rebuilt with new row numbers

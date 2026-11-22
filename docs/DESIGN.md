@@ -116,7 +116,7 @@ Le contenu analysé est hostile par définition.
 ## Ordre de travail
 1. Spécifier le format des règles (schéma) et constituer un premier corpus piégé et sain, inspiré d'EchoLeak, de PoisonedRAG et de Slack AI.
 2. `poisonscan-core` + `rules lint/test` + CI.
-3. `poisonscan-sources` (fichiers, JSONL, SQLite, Maildir) + `scan-store` + `explain`.
+3. `poisonscan-sources` (fichiers, JSONL, SQLite, Maildir) + `scan-store` + `explain`. Fait pour SQLite : `tag-sqlite` (marqueurs dans `poisonscan_tags`, analyse incrémentale, nettoyage des orphelins, clé par empreinte du contenu au besoin).
 4. Liaison PyO3 et exemple d'intégration dans un pipeline d'ingestion RAG.
 5. Banc d'essai public, puis première version publiée.
 

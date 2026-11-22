@@ -12,6 +12,8 @@ use poisonscan_core::output::{render, Format};
 use poisonscan_core::{Rule, RuleSet, Scanner, Trust, Verdict};
 use poisonscan_sources::{Directory, EnvelopeSource, JsonLines};
 
+mod tag_sqlite;
+
 
 #[derive(Parser)]
 #[command(name = "poisonscan", version, about = "Detect collection-to-LLM poisoning (indirect prompt injection, RAG corpus poisoning)")]
@@ -45,6 +47,36 @@ enum Cmd {
         input: String,
         #[arg(long, default_value = "rules")]
         rules: PathBuf,
+    },
+    /// Scan the rows of a SQLite table and store informational tags in tables of
+    /// their own (poisonscan_tags, poisonscan_seen). The source table is only read.
+    TagSqlite {
+        /// TOML file describing the database, table and columns.
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long, default_value = "rules")]
+        rules: PathBuf,
+        #[arg(long, default_value_t = 2)]
+        threads: usize,
+        #[arg(long, default_value_t = 1000)]
+        batch: usize,
+        #[arg(long, default_value_t = 2 * 1024 * 1024)]
+        max_bytes: usize,
+        /// Stop after N rows (tests). Disables orphan removal.
+        #[arg(long)]
+        limit: Option<u64>,
+        /// Scan without writing anything (database opened read-only).
+        #[arg(long)]
+        dry_run: bool,
+        /// Scan every row again, even unchanged ones.
+        #[arg(long)]
+        full: bool,
+        /// Keep tags of rows that are no longer in the table.
+        #[arg(long)]
+        no_prune: bool,
+        /// Drop the tag tables first (replaces an older table layout).
+        #[arg(long)]
+        reset: bool,
     },
     /// Rule pack tooling.
     Rules {
@@ -371,6 +403,19 @@ fn rules_test(dir: &Path, corpus: Option<&Path>) -> Result<ExitCode> {
     Ok(if failures == 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE })
 }
 
+fn run_tag_sqlite(config: &Path, rules_dir: &Path, opts: tag_sqlite::Options) -> Result<ExitCode> {
+    let cfg = tag_sqlite::load_config(config)?;
+    let rules = load_ruleset(rules_dir)?;
+    let st = tag_sqlite::run(&cfg, &rules, &opts)?;
+    eprintln!(
+        "poisonscan tag-sqlite: {} row(s), {} scanned, {} tagged, {} tag(s) removed, {} orphan(s) pruned{} [{}]",
+        st.rows, st.scanned, st.flagged, st.untagged, st.pruned,
+        if opts.dry_run { " (dry run, nothing written)" } else { "" },
+        rules.fingerprint
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let res = match cli.cmd {
@@ -387,6 +432,11 @@ fn main() -> ExitCode {
         Cmd::ScanDir { path, trust, opts } => parse_trust(&trust)
             .and_then(|t| run_scan(&mut Directory::new(&path, t, opts.max_bytes as u64), &opts)),
         Cmd::Explain { input, rules } => run_explain(&input, &rules),
+        Cmd::TagSqlite { config, rules, threads, batch, max_bytes, limit, dry_run, full, no_prune, reset } => {
+            run_tag_sqlite(&config, &rules, tag_sqlite::Options {
+                threads, batch: batch.max(1), max_bytes, limit, dry_run, full, prune: !no_prune, reset,
+            })
+        }
         Cmd::Rules { cmd: RulesCmd::Lint { dir } } => rules_lint(&dir),
         Cmd::Rules { cmd: RulesCmd::Test { dir, corpus } } => rules_test(&dir, corpus.as_deref()),
     };
